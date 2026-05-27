@@ -1,3 +1,4 @@
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
@@ -8,9 +9,9 @@ from . import models, schemas
 # ==========================================
 
 def create_client(db: Session, client: schemas.ClientCreate):
-    #See if Name or PAN is already registered
+    # Proactive Check: Force a case-insensitive check on Name and match PAN number
     existing = db.query(models.Client).filter(
-        (models.Client.name == client.name) |
+        (func.lower(models.Client.name) == func.lower(client.name.strip())) |
         (models.Client.pan_number == client.pan_number)
     ).first()
     
@@ -20,8 +21,9 @@ def create_client(db: Session, client: schemas.ClientCreate):
             detail="⚠️ A client firm with this Name or PAN number is already registered."
         )
 
+    # Strip unexpected whitespace gaps but keep user casing preference for display
     db_client = models.Client(
-        name=client.name,
+        name=client.name.strip(),
         pan_number=client.pan_number
     )
     try:
