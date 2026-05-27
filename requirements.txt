@@ -1,0 +1,15 @@
+# Frontend UI
+streamlit>=1.30.0
+
+# Backend Core & API Operations
+fastapi>=0.100.0
+uvicorn>=0.22.0
+requests>=2.31.0
+
+# Database Engine
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+
+# Data Transformation & Excel Reporting
+pandas>=2.0.0
+openpyxl>=3.1.0
