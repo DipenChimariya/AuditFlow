@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Optional
 from pydantic import BaseModel, Field
 
 # ==========================================
@@ -21,29 +22,28 @@ class ClientResponse(ClientCreate):
 # ==========================================
 # INVOICE SCHEMAS
 # ==========================================
-
 class InvoiceCreate(BaseModel):
-    client_id: int # Pointing to the unique ID of the client being audited
-    
-    vendor_name: str = Field(..., min_length=1)
-    pan_number: str | None = Field(None, min_length=9, max_length=9, pattern=r"^\d{9}$") # Vendor's PAN
-    invoice_number: str | None = None
+    client_id: int
+    vendor_name: str
+    invoice_number: Optional[str] = None
+    subtotal: Decimal
+    vat: Decimal
+    total: Decimal
+    pan_number: Optional[str] = Field(None,pattern=r"^\d{9}$")
+    category: Optional[str] = None
+    invoice_date: Optional[date] = None
 
-    
-    subtotal: Decimal = Field(default_factory=lambda: Decimal("0.00"))
-    vat: Decimal = Field(default_factory=lambda: Decimal("0.00"))
-    total: Decimal = Field(default_factory=lambda: Decimal("0.00"))
-
-    category: str | None = None
-    invoice_date: date | None = None
-
-class InvoiceResponse(InvoiceCreate):
+class InvoiceResponse(BaseModel):
     id: int
-    created_at: datetime
-    
-    # Optional but highly recommended: nested client data so we can easily show
-    # "Client: ABC Trading Pvt. Ltd." on Streamlit dashboard side-by-side with invoice details
-    client: ClientResponse | None = None 
+    client_id: int
+    vendor_name: str
+    invoice_number: Optional[str] = None
+    subtotal: Decimal
+    vat: Decimal
+    total: Decimal
+    pan_number: Optional[str] = Field(None,pattern=r"^\d{9}$")
+    category: Optional[str] = None
+    invoice_date: Optional[date] = None 
 
     class Config:
         from_attributes = True

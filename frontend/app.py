@@ -1,5 +1,9 @@
 import streamlit as st
+import io
+from datetime import datetime
+import pandas as pd
 from utils.api import fetch_clients, add_new_client, fetch_invoices, add_new_invoice
+
 
 st.set_page_config(page_title="AuditFlow Enterprise", page_icon="💼", layout="wide")
 st.title("💼 AuditFlow Workspace")
@@ -95,6 +99,7 @@ with tab1:
             else:
                 st.dataframe(filtered_data, use_container_width=True, hide_index=True)
 
+
 # ==========================================
 # TAB 2: INVOICE MANAGEMENT
 # ==========================================
@@ -117,6 +122,9 @@ with tab2:
             vendor_name = st.text_input("Vendor Name (Seller)", placeholder="e.g., Bhat-Bhateni Supermarket", key="tab2_vendor_name")
             invoice_num = st.text_input("Invoice / Bill Number", placeholder="e.g., INV-2026-001", key="tab2_invoice_num")
             
+            # --- Added Feature: Calendar Date Selector input ---
+            invoice_date = st.date_input("Invoice Date", value=datetime.today(), key="tab2_invoice_date")
+            
             if "calc_vat_val" not in st.session_state:
                 st.session_state.calc_vat_val = 0.0
 
@@ -132,7 +140,8 @@ with tab2:
                     st.error("❌ Vendor Name is mandatory.")
                 else:
                     with st.spinner("Linking to database..."):
-                        res = add_new_invoice(target_client_id, vendor_name, invoice_num, subtotal, vat_amount)
+                        # Included the invoice_date parameter here
+                        res = add_new_invoice(target_client_id, vendor_name, invoice_num, subtotal, vat_amount, invoice_date)
                         
                         if res is None:
                             st.error("🔌 Could not connect to Backend. Is your FastAPI server running?")
@@ -164,18 +173,76 @@ with tab2:
             elif len(invoices) == 0:
                 st.info("No invoices logged in the central repository yet.")
             else:
-                st.metric(label="Total Logged Vouchers", value=len(invoices))
+                # --- Added Feature: Global Invoice Search Filtering ---
+                inv_search = st.text_input(
+                    "🔍 Search Invoices", 
+                    placeholder="Type Vendor Name, Bill Number, or Assigned Client Name...", 
+                    key="invoice_search_input"
+                ).strip().lower()
                 
+                # Assemble baseline raw table layout matrix
                 inv_table = []
                 for index, i in enumerate(invoices, start=1):
                     owner_name = next((c["name"] for c in clients_list if c["id"] == i["client_id"]), f"Client ID: {i['client_id']}")
+                    
+                    # Convert date format if returned from backend cleanly
+                    formatted_date = i.get("invoice_date") or "N/A"
+                    
                     inv_table.append({
                         "S.No.": index,
                         "Assigned Client": owner_name,
                         "Vendor": i["vendor_name"],
                         "Bill Number": i["invoice_number"] or "N/A",
-                        "Subtotal": f"Rs. {float(i['subtotal']):.2f}",
-                        "VAT Amount": f"Rs. {float(i['vat']):.2f}",
-                        "Total Bill": f"Rs. {float(i['total']):.2f}"
+                        "Invoice Date": formatted_date,
+                        "Subtotal (Rs.)": float(i['subtotal']),
+                        "VAT Amount (Rs.)": float(i['vat']),
+                        "Total Bill (Rs.)": float(i['total'])
                     })
-                st.dataframe(inv_table, use_container_width=True, hide_index=True)
+                
+                # In-memory search computation
+                if inv_search:
+                    filtered_invs = [
+                        row for row in inv_table
+                        if inv_search in row["Assigned Client"].lower() or 
+                           inv_search in row["Vendor"].lower() or 
+                           inv_search in row["Bill Number"].lower()
+                    ]
+                    # Dynamic sequential serial numbering recalculation
+                    for idx, row in enumerate(filtered_invs, start=1):
+                        row["S.No."] = idx
+                else:
+                    filtered_invs = inv_table
+
+                st.metric(label="Total Logged Vouchers", value=len(filtered_invs))
+                
+                if not filtered_invs:
+                    st.warning("No invoices found matching that specific search criteria.")
+                else:
+                    # Render the dynamic table layout with formatted money strings for cleaner readability
+                    display_df = pd.DataFrame(filtered_invs)
+                    
+                    formatted_df = display_df.copy()
+                    formatted_df["Subtotal (Rs.)"] = formatted_df["Subtotal (Rs.)"].map("Rs. {:.2f}".format)
+                    formatted_df["VAT Amount (Rs.)"] = formatted_df["VAT Amount (Rs.)"].map("Rs. {:.2f}".format)
+                    formatted_df["Total Bill (Rs.)"] = formatted_df["Total Bill (Rs.)"].map("Rs. {:.2f}".format)
+                    
+                    st.dataframe(formatted_df, use_container_width=True, hide_index=True)
+                    
+                    # --- Added Feature: Export Excel Ledger Spreadsheet Data Drop ---
+                    st.write(" ")
+                    # Convert our active filtered results back into raw Excel byte streams
+                    excel_buffer = io.BytesIO()
+                    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                        # Dropping serialization serialization structures for clean data download
+                        excel_df = display_df.drop(columns=["S.No."])
+                        excel_df.to_excel(writer, sheet_name="AuditFlow Ledger", index=False)
+                    
+                    excel_data = excel_buffer.getvalue()
+                    
+                    st.download_button(
+                        label="📥 Export Filtered Ledger to Excel",
+                        data=excel_data,
+                        file_name=f"AuditFlow_Ledger_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )

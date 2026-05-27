@@ -33,17 +33,17 @@ def fetch_invoices():
     except requests.exceptions.ConnectionError:
         return None
 
-def add_new_invoice(client_id: int, vendor_name: str, invoice_number: str, subtotal: float, vat: float):
+def add_new_invoice(client_id: int, vendor_name: str, invoice_number: str, subtotal: float, vat: float, invoice_date=None):
     payload = {
         "client_id": client_id,
         "vendor_name": vendor_name,
         "invoice_number": invoice_number if invoice_number else None,
-        "subtotal": str(subtotal),  # Convert to string so backend handles it cleanly as Decimal
+        "subtotal": str(subtotal),  
         "vat": str(vat),
-        "total": str(subtotal + vat), # Automatically compute total before shipping out
-        "pan_number": None, # Will be filled by OCR engine later
+        "total": str(subtotal + vat), 
+        "pan_number": None, 
         "category": None,
-        "invoice_date": None
+        "invoice_date": invoice_date.strftime("%Y-%m-%d") if invoice_date else None # Formats date correctly for JSON transfer
     }
     try:
         response = requests.post(f"{BACKEND_URL}/invoices/", json=payload)
