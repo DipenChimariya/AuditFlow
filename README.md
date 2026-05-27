@@ -9,7 +9,7 @@ AuditFlow is an AI-powered audit assistant web application built for audit firms
 * VAT validation
 * Duplicate invoice detection
 * Expense categorization
-* Dashboard & reporting
+* Dashboard \& reporting
 * Basic Inventory management
 
 ## Tech Stack
