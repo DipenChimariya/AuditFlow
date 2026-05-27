@@ -58,8 +58,14 @@ with tab1:
         elif len(clients) == 0:
             st.info("ℹ️ No client firms found in the system yet.")
         else:
-            st.metric(label="Total Active Client Profiles", value=len(clients))
+            # --- Added: Client Search Bar Feature ---
+            search_query = st.text_input(
+                "🔍 Search Clients", 
+                placeholder="Type Firm Name or 9-digit PAN to filter...", 
+                key="client_search_input"
+            ).strip().lower()
             
+            # Map full data array to table format
             table_data = []
             for index, c in enumerate(clients, start=1):
                 table_data.append({
@@ -68,8 +74,26 @@ with tab1:
                     "PAN Number": c["pan_number"] if c["pan_number"] else "N/A"
                 })
             
-            st.dataframe(table_data, use_container_width=True, hide_index=True)
+            # Filter the table in real-time based on user input
+            if search_query:
+                filtered_data = [
+                    row for row in table_data 
+                    if search_query in row["Client Firm Name"].lower() or search_query in row["PAN Number"].lower()
+                ]
+                
+                # Re-index the S.No. dynamically for search results
+                for idx, row in enumerate(filtered_data, start=1):
+                    row["S.No."] = idx
+            else:
+                filtered_data = table_data
 
+            # Display KPIs and DataFrame based on filtered results
+            st.metric(label="Total Active Client Profiles", value=len(clients))
+            
+            if not filtered_data:
+                st.warning("Match empty. No registered client fits that description.")
+            else:
+                st.dataframe(filtered_data, use_container_width=True, hide_index=True)
 
 # ==========================================
 # TAB 2: INVOICE MANAGEMENT
