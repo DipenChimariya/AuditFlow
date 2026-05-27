@@ -29,16 +29,26 @@ with tab1:
                 with st.spinner("Writing to PostgreSQL..."):
                     response = add_new_client(client_name, pan_number)
                     
-                    if response and response.status_code == 200:
+                    if response is None:
+                        st.error("🔌 Could not connect to Backend. Is your FastAPI server running?")
+                    elif response.status_code == 200:
                         st.success(f"🎉 '{client_name}' successfully added!")
                         st.rerun()
-                    elif response and response.status_code == 400:
+                    elif response.status_code == 422:
                         try:
+                            errors = response.json()["detail"]
+                            err_msg = " | ".join([ f"{err['loc'][-1]}: {err['msg']}" for err in errors ])
+                            st.error(f"❌ Structural Validation Mismatch (422): {err_msg}")
+                        except Exception:
+                            st.error("❌ Data formatting error. Check your input values.")
+                    elif 400 <= response.status_code < 500:
+                        try:
+                            # Safely extracts the exact duplicate warning from crud.py
                             st.error(response.json()["detail"])
                         except Exception:
-                            st.error("⚠️ Client name or PAN number already exists.")
+                            st.error(f"⚠️ Request failed with status code: {response.status_code}")
                     else:
-                        st.error("❌ Failed to save client profile due to a connection issue.")
+                        st.error(f"❌ Server Error {response.status_code}. Unable to save client profile.")
         
     with col2:
         st.markdown("### Registered Audit Clients")
@@ -83,18 +93,15 @@ with tab2:
             vendor_name = st.text_input("Vendor Name (Seller)", placeholder="e.g., Bhat-Bhateni Supermarket", key="tab2_vendor_name")
             invoice_num = st.text_input("Invoice / Bill Number", placeholder="e.g., INV-2026-001", key="tab2_invoice_num")
             
-            # --- Dynamic Session States to let calculations update inputs in real-time ---
             if "calc_vat_val" not in st.session_state:
                 st.session_state.calc_vat_val = 0.0
 
             subtotal = st.number_input("Subtotal / Base Amount (Rs.)", min_value=0.0, step=100.0, format="%.2f", key="tab2_subtotal")
-            
-            # This links the number input's base value dynamically to state memory
             vat_amount = st.number_input("VAT Amount (Rs.)", min_value=0.0, step=13.0, format="%.2f", key="tab2_vat", value=st.session_state.calc_vat_val)
             
             if st.button("Auto-Calculate 13% VAT", key="tab2_calc_vat_btn"):
                 st.session_state.calc_vat_val = round(subtotal * 0.13, 2)
-                st.rerun() # Forces Streamlit to redraw the input components with the updated calculation
+                st.rerun()
             
             if st.button("Commit Invoice to Ledger", type="primary", key="tab2_save_invoice_btn"):
                 if not vendor_name:
@@ -110,16 +117,13 @@ with tab2:
                             st.session_state.calc_vat_val = 0.0
                             st.rerun()
                         elif res.status_code == 422:
-                            # Catch and unpack FastAPI structural validation details cleanly
                             try:
                                 errors = res.json()["detail"]
-                                # Combine validation error locations and messages into a clean string
                                 err_msg = " | ".join([ f"{err['loc'][-1]}: {err['msg']}" for err in errors ])
                                 st.error(f"❌ Schema Validation Error (422): {err_msg}")
                             except Exception:
                                 st.error("❌ Data formatting error. Check your input values.")
                         elif 400 <= res.status_code < 500:
-                            # Catch our custom 400 duplicates or 404 missing records from crud.py
                             try:
                                 st.error(res.json()["detail"])
                             except Exception:
