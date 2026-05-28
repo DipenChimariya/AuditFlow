@@ -16,20 +16,37 @@ st.write("---")
 # ==========================================
 if "form_generation" not in st.session_state:
     st.session_state.form_generation = 0
+
+# Store success messages across page reruns
+if "client_success_msg" not in st.session_state:
+    st.session_state.client_success_msg = None
+if "invoice_success_msg" not in st.session_state:
+    st.session_state.invoice_success_msg = None
+
 tab1, tab2 = st.tabs(["🏢 Client Directory", "📄 Invoice Ledger"])
 
+# ==========================================
 # TAB 1: CLIENT MANAGEMENT
-
+# ==========================================
 with tab1:
     st.subheader("Client Profiles")
     col1, col2 = st.columns([1, 2])
     
     with col1:
         st.markdown("### Register New Client Firm")
+            
         client_name = st.text_input("Official Firm Name", placeholder="e.g., ABC Trading Pvt. Ltd.", key="tab1_client_name")
         pan_number = st.text_input("Nepalese PAN (9 Digits)", max_chars=9, placeholder="e.g., 678546345", key="tab1_pan_number")
         
-        if st.button("Save Client to Database", type="primary", key="tab1_save_client_btn"):
+        st.markdown(" ")
+        submit_client_clicked = st.button("Save Client to Database", type="primary", key="tab1_save_client_btn", use_container_width=True)
+        
+        
+        if st.session_state.client_success_msg:
+            st.success(st.session_state.client_success_msg)
+            st.session_state.client_success_msg = None 
+            
+        if submit_client_clicked:
             if not client_name:
                 st.error("❌ The Client Firm Name is required.")
             elif pan_number and (not pan_number.isdigit() or len(pan_number) != 9):
@@ -41,7 +58,7 @@ with tab1:
                     if response is None:
                         st.error("🔌 Could not connect to Backend. Is your FastAPI server running?")
                     elif response.status_code == 200:
-                        st.success(f"🎉 '{client_name}' successfully added!")
+                        st.session_state.client_success_msg = f"🎉 '{client_name}' successfully added!"
                         st.rerun()
                     elif response.status_code == 422:
                         try:
@@ -99,8 +116,9 @@ with tab1:
                 st.dataframe(filtered_data, use_container_width=True, hide_index=True)
 
 
-
+# ==========================================
 # TAB 2: INVOICE MANAGEMENT
+# ==========================================
 with tab2:
     st.subheader("Invoice Records")
     clients_list = fetch_clients() or []
@@ -131,15 +149,13 @@ with tab2:
                 st.markdown(" ")
                 st.markdown("**Financial Breakdown**")
                 
-                # Dynamic keys to ensure absolute form isolation across submission cycles
-                subtotal_key = f"subtotal_input_{st.session_state.form_generation}"
+                dynamic_subtotal_key = f"subtotal_input_{st.session_state.form_generation}"
                 vat_override_key = f"vat_input_{st.session_state.form_generation}"
                 
-                # 1. Base Subtotal Field
                 subtotal_raw = st.text_input(
                     "Subtotal / Base Amount (Rs.)", 
                     placeholder="e.g., 23500.00", 
-                    key=subtotal_key
+                    key=dynamic_subtotal_key
                 ).strip()
                 
                 try:
@@ -148,41 +164,40 @@ with tab2:
                     st.error("⚠️ Invalid number format in Subtotal field.")
                     subtotal_dec = Decimal("0.00")
                 
-                # 2. Automated Real-time VAT computation
                 calculated_vat = (subtotal_dec * Decimal("0.13")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
                 
-                # 3. VAT field 
                 vat_amount_raw = st.text_input(
                     "VAT Amount (Rs.) [13% Auto-Computed]",
                     placeholder=f"Auto: {calculated_vat:.2f}" if subtotal_dec > 0 else "e.g., 3055.00",
                     key=vat_override_key
                 ).strip()
                 
-                # FIX: If the user hasn't overridden the field manually, fall back to the calculated VAT automatically!
                 try:
                     if vat_amount_raw:
                         vat_dec = Decimal(vat_amount_raw)
                     else:
-                       
                         vat_dec = calculated_vat
                 except InvalidOperation:
                     vat_dec = Decimal("0.00")
                 
-                
                 total_dec = subtotal_dec + vat_dec
                 
-                # Display a clear, read-only total voucher KPI metrics banner
                 st.info(f"📊 **Voucher Summary:** Base: **Rs. {subtotal_dec:,.2f}** | VAT: **Rs. {vat_dec:,.2f}** | Total Bill: **Rs. {total_dec:,.2f}**")
                 
                 st.markdown("---")
                 submit_clicked = st.button("Commit Invoice to Ledger", type="primary", key="tab2_save_invoice_btn", use_container_width=True)
+
+                
+                if st.session_state.invoice_success_msg:
+                    st.markdown(" ")
+                    st.success(st.session_state.invoice_success_msg)
+                    st.session_state.invoice_success_msg = None 
 
             if submit_clicked:
                 if not vendor_name:
                     st.error("❌ Vendor Name is mandatory.")
                 else:
                     with st.spinner("Linking to database..."):
-                        # Convert decimals back to native system floats exclusively for FastAPI transmission parameters
                         res = add_new_invoice(
                             target_client_id, 
                             vendor_name, 
@@ -195,9 +210,7 @@ with tab2:
                         if res is None:
                             st.error("🔌 Could not connect to Backend. Is your FastAPI server running?")
                         elif res.status_code == 200:
-                            st.success(f"🎉 Invoice {invoice_num} successfully pinned!")
-                            
-                            # Cleanly drop old state mappings, increment ID generator, and refresh instantly
+                            st.session_state.invoice_success_msg = f"🎉 Invoice {invoice_num} Successfully Added!"
                             st.session_state.form_generation += 1
                             st.rerun()
                         elif res.status_code == 422:
