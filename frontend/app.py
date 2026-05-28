@@ -1,9 +1,10 @@
 import streamlit as st
 import io
+import time
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import pandas as pd
-from utils.api import fetch_clients, add_new_client, fetch_invoices, add_new_invoice
+from utils.api import fetch_clients, add_new_client, fetch_invoices, add_new_invoice, delete_invoice
 
 
 st.set_page_config(page_title="AuditFlow Enterprise", page_icon="💼", layout="wide")
@@ -17,11 +18,12 @@ st.write("---")
 if "form_generation" not in st.session_state:
     st.session_state.form_generation = 0
 
-# Store success messages across page reruns
 if "client_success_msg" not in st.session_state:
     st.session_state.client_success_msg = None
 if "invoice_success_msg" not in st.session_state:
     st.session_state.invoice_success_msg = None
+if "delete_success_msg" not in st.session_state:
+    st.session_state.delete_success_msg = None
 
 tab1, tab2 = st.tabs(["🏢 Client Directory", "📄 Invoice Ledger"])
 
@@ -40,7 +42,6 @@ with tab1:
         
         st.markdown(" ")
         submit_client_clicked = st.button("Save Client to Database", type="primary", key="tab1_save_client_btn", use_container_width=True)
-        
         
         if st.session_state.client_success_msg:
             st.success(st.session_state.client_success_msg)
@@ -187,7 +188,6 @@ with tab2:
                 st.markdown("---")
                 submit_clicked = st.button("Commit Invoice to Ledger", type="primary", key="tab2_save_invoice_btn", use_container_width=True)
 
-                
                 if st.session_state.invoice_success_msg:
                     st.markdown(" ")
                     st.success(st.session_state.invoice_success_msg)
@@ -210,7 +210,7 @@ with tab2:
                         if res is None:
                             st.error("🔌 Could not connect to Backend. Is your FastAPI server running?")
                         elif res.status_code == 200:
-                            st.session_state.invoice_success_msg = f"🎉 Invoice {invoice_num} Successfully Added!"
+                            st.session_state.invoice_success_msg = f"🎉 Invoice {invoice_num} successfully pinned!"
                             st.session_state.form_generation += 1
                             st.rerun()
                         elif res.status_code == 422:
@@ -244,9 +244,16 @@ with tab2:
                 ).strip().lower()
                 
                 inv_table = []
+                # Keep track of structural database primary key IDs for deletion mapping
+                id_map = {} 
+                
                 for index, i in enumerate(invoices, start=1):
                     owner_name = next((c["name"] for c in clients_list if c["id"] == i["client_id"]), f"Client ID: {i['client_id']}")
                     formatted_date = i.get("invoice_date") or "N/A"
+                    display_label = f"S.No. {index} | {owner_name} ({i['vendor_name']}) - Bill: {i['invoice_number'] or 'N/A'}"
+                    
+                    # Store the database ID mapped to this easy display row string
+                    id_map[display_label] = i["id"]
                     
                     inv_table.append({
                         "S.No.": index,
@@ -285,18 +292,57 @@ with tab2:
                     
                     st.dataframe(formatted_df, use_container_width=True, hide_index=True)
                     
-                    st.write(" ")
-                    excel_buffer = io.BytesIO()
-                    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                        excel_df = display_df.drop(columns=["S.No."])
-                        excel_df.to_excel(writer, sheet_name="AuditFlow Ledger", index=False)
+                    # Layout splitting actions for Export vs Delete
+                    action_col1, action_col2 = st.columns(2)
                     
-                    excel_data = excel_buffer.getvalue()
+                    with action_col1:
+                        excel_buffer = io.BytesIO()
+                        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                            excel_df = display_df.drop(columns=["S.No."])
+                            excel_df.to_excel(writer, sheet_name="AuditFlow Ledger", index=False)
+                        
+                        excel_data = excel_buffer.getvalue()
+                        st.download_button(
+                            label="📥 Export to Excel",
+                            data=excel_data,
+                            file_name=f"AuditFlow_Ledger_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
                     
-                    st.download_button(
-                        label="📥 Export to Excel",
-                        data=excel_data,
-                        file_name=f"AuditFlow_Ledger_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
+                    # FIX: Dedicated drop-down expander to handle records removal elegantly
+                    # Dedicated drop-down expander to handle records removal elegantly
+                    with action_col2:
+                        with st.expander("🗑️ Delete an Incorrect Record"):
+                            # Dropdown lets user select the invoice based on row labels
+                            target_label = st.selectbox(
+                                "Select row to remove permanently:", 
+                                options=list(id_map.keys()),
+                                index=0,
+                                key="invoice_delete_selector"
+                            )
+                            
+                            confirm_delete = st.button("Delete Permanently", type="primary", use_container_width=True)
+                            
+                        
+                            delete_alert_placeholder = st.empty()
+                            
+                            if confirm_delete:
+                                target_id = id_map[target_label]
+                                with st.spinner("Removing row from database..."):
+                                    del_res = delete_invoice(target_id)
+                                    
+                                    if del_res is None:
+                                        st.error("🔌 Could not connect to Backend. Is your FastAPI server running?")
+                                    elif del_res.status_code == 200:
+                                        
+                                        delete_alert_placeholder.success("🗑️ Record Successfully Deleted from Database")
+                                        time.sleep(2.5)
+                                        delete_alert_placeholder.empty()
+                                        
+                                        
+                                        st.rerun()
+                                    else:
+                                        st.error(f"❌ Failed to delete. Backend returned status code: {del_res.status_code}")
+                    
+        

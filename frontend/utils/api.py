@@ -50,3 +50,15 @@ def add_new_invoice(client_id: int, vendor_name: str, invoice_number: str, subto
         return response
     except requests.exceptions.ConnectionError:
         return None
+    
+
+def delete_invoice(invoice_id: int):
+    """
+    Sends a DELETE request to the FastAPI backend to remove an invoice by its ID.
+    """
+    try:
+        url = f"http://127.0.0.1:8000/invoices/{invoice_id}" 
+        response = requests.delete(url)
+        return response
+    except requests.exceptions.ConnectionError:
+        return None
