@@ -32,89 +32,115 @@ tab1, tab2 = st.tabs(["🏢 Client Directory", "📄 Invoice Ledger"])
 # ==========================================
 with tab1:
     st.subheader("Client Profiles")
-    col1, col2 = st.columns([1, 2])
     
-    with col1:
-        st.markdown("### Register New Client Firm")
+    
+    form_col, spacer_col = st.columns([1, 1]) 
+    
+    with form_col:
+        with st.container(border=True):
+            st.markdown("### 🏢 Register New Client Firm")
+            st.caption("Add a new Client.")
+            st.markdown("---")
+                
+            client_name = st.text_input("Client's official Name", placeholder="e.g., ABC Trading Pvt. Ltd.", key="tab1_client_name")
+            pan_number = st.text_input("PAN Number(9 Digits)", max_chars=9, placeholder="e.g., 678546345", key="tab1_pan_number")
             
-        client_name = st.text_input("Official Firm Name", placeholder="e.g., ABC Trading Pvt. Ltd.", key="tab1_client_name")
-        pan_number = st.text_input("Nepalese PAN (9 Digits)", max_chars=9, placeholder="e.g., 678546345", key="tab1_pan_number")
-        
-        st.markdown(" ")
-        submit_client_clicked = st.button("Save Client to Database", type="primary", key="tab1_save_client_btn", use_container_width=True)
-        
-        if st.session_state.client_success_msg:
-            st.success(st.session_state.client_success_msg)
-            st.session_state.client_success_msg = None 
+            st.markdown(" ")
+            submit_client_clicked = st.button("Save Client to Database", type="primary", key="tab1_save_client_btn", use_container_width=True)
             
-        if submit_client_clicked:
-            if not client_name:
-                st.error("❌ The Client Firm Name is required.")
-            elif pan_number and (not pan_number.isdigit() or len(pan_number) != 9):
-                st.error("❌ PAN number must be exactly 9 numeric digits.")
-            else:
-                with st.spinner("Writing to PostgreSQL..."):
-                    response = add_new_client(client_name, pan_number)
-                    
-                    if response is None:
-                        st.error("🔌 Could not connect to Backend. Is your FastAPI server running?")
-                    elif response.status_code == 200:
-                        st.session_state.client_success_msg = f"🎉 '{client_name}' successfully added!"
-                        st.rerun()
-                    elif response.status_code == 422:
-                        try:
-                            errors = response.json()["detail"]
-                            err_msg = " | ".join([ f"{err['loc'][-1]}: {err['msg']}" for err in errors ])
-                            st.error(f"❌ Structural Validation Mismatch (422): {err_msg}")
-                        except Exception:
-                            st.error("❌ Data formatting error. Check your input values.")
-                    elif 400 <= response.status_code < 500:
-                        try:
-                            st.error(response.json()["detail"])
-                        except Exception:
-                            st.error(f"⚠️ Request failed with status code: {response.status_code}")
-                    else:
-                        st.error(f"❌ Server Error {response.status_code}. Unable to save client profile.")
+            
+            if st.session_state.client_success_msg:
+                st.markdown(" ")
+                st.success(st.session_state.client_success_msg)
+                st.session_state.client_success_msg = None 
+                
+            if submit_client_clicked:
+                if not client_name:
+                    st.error("❌ Client's Name is required.")
+                elif pan_number and (not pan_number.isdigit() or len(pan_number) != 9):
+                    st.error("❌ PAN number must be exactly 9 numeric digits.")
+                else:
+                    with st.spinner("Writing to PostgreSQL..."):
+                        response = add_new_client(client_name, pan_number)
+                        
+                        if response is None:
+                            st.error("🔌 Could not connect to Backend.")
+                        elif response.status_code == 200:
+                            st.session_state.client_success_msg = f"🎉 '{client_name}' successfully added!"
+                            st.rerun()
+                        elif response.status_code == 422:
+                            try:
+                                errors = response.json()["detail"]
+                                err_msg = " | ".join([ f"{err['loc'][-1]}: {err['msg']}" for err in errors ])
+                                st.error(f"❌ Structural Validation Mismatch (422): {err_msg}")
+                            except Exception:
+                                st.error("❌ Data formatting error. Check your input values.")
+                        elif 400 <= response.status_code < 500:
+                            try:
+                                st.error(response.json()["detail"])
+                            except Exception:
+                                st.error(f"⚠️ Request failed with status code: {response.status_code}")
+                        else:
+                            st.error(f"❌ Server Error {response.status_code}. Unable to save client profile.")
+    
+    
+    st.markdown("---")
+    
+    st.markdown("### 🔍 Registered Audit Clients Directory")
+    
+    clients = fetch_clients()
+    if clients is None:
+        st.error("🔌 Could not connect to Backend.")
+    elif len(clients) == 0:
+        st.info("ℹ️ No client firms found in the system yet.")
+    else:
+        search_col, metric_col = st.columns([3, 1])
         
-    with col2:
-        st.markdown("### Registered Audit Clients")
-        clients = fetch_clients()
-        if clients is None:
-            st.error("🔌 Could not connect to Backend. Is your FastAPI server running?")
-        elif len(clients) == 0:
-            st.info("ℹ️ No client firms found in the system yet.")
-        else:
+        with search_col:
             search_query = st.text_input(
-                "🔍 Search Clients", 
-                placeholder="Type Firm Name or 9-digit PAN to filter...", 
-                key="client_search_input"
+                "Search Active Directory", 
+                placeholder="🔍 Type Client's Name or  PAN Num to apply a live filter...", 
+                key="client_search_input",
+                label_visibility="collapsed"
             ).strip().lower()
             
-            table_data = []
-            for index, c in enumerate(clients, start=1):
-                table_data.append({
-                    "S.No.": index,                      
-                    "Client Firm Name": c["name"],
-                    "PAN Number": c["pan_number"] if c["pan_number"] else "N/A"
-                })
+        with metric_col:
             
-            if search_query:
-                filtered_data = [
-                    row for row in table_data 
-                    if search_query in row["Client Firm Name"].lower() or search_query in row["PAN Number"].lower()
-                ]
-                
-                for idx, row in enumerate(filtered_data, start=1):
-                    row["S.No."] = idx
-            else:
-                filtered_data = table_data
-
-            st.metric(label="Total Active Client Profiles", value=len(clients))
-            
-            if not filtered_data:
-                st.warning("Match empty. No registered client fits that description.")
-            else:
-                st.dataframe(filtered_data, use_container_width=True, hide_index=True)
+            st.markdown(f"**Total Registered Firms:** `{len(clients)}`")
+        
+        
+        table_data = []
+        for index, c in enumerate(clients, start=1):
+            table_data.append({
+                "S.No.": index,                      
+                "Client Firm Name": c["name"],
+                "PAN Number": c["pan_number"] if c["pan_number"] else "N/A"
+            })
+        
+        
+        if search_query:
+            filtered_data = [
+                row for row in table_data 
+                if search_query in row["Client Firm Name"].lower() or search_query in row["PAN Number"].lower()
+            ]
+            for idx, row in enumerate(filtered_data, start=1):
+                row["S.No."] = idx
+        else:
+            filtered_data = table_data
+        
+        
+        if not filtered_data:
+            st.warning("Match empty. No registered client fits that description.")
+        else:
+            st.dataframe(
+                filtered_data, 
+                use_container_width=True, 
+                hide_index=True,
+                column_config={
+                    "S.No.": st.column_config.NumberColumn(width="small"),
+                    "PAN Number": st.column_config.TextColumn(width="medium"),
+                }
+            )
 
 
 # ==========================================
@@ -237,14 +263,31 @@ with tab2:
             elif len(invoices) == 0:
                 st.info("No invoices logged in the central repository yet.")
             else:
-                inv_search = st.text_input(
-                    "🔍 Search Invoices", 
-                    placeholder="Type Vendor Name, Bill Number, or Assigned Client Name...", 
-                    key="invoice_search_input"
-                ).strip().lower()
+                # Create Layout Columns for Text Search vs Date Range Filter
+                filter_col1, filter_col2 = st.columns([1, 1])
                 
+                with filter_col1:
+                    inv_search = st.text_input(
+                        "🔍 Text Search", 
+                        placeholder="Type Vendor, Bill Number, Client Name...", 
+                        key="invoice_search_input"
+                    ).strip().lower()
+                
+                with filter_col2:
+                    # Provide a checkbox option so filtering by date is optional
+                    enable_date_filter = st.checkbox("📅 Filter by Date Range", value=False)
+                    if enable_date_filter:
+                       
+                        date_range = st.date_input(
+                            "Select Range (Start - End)",
+                            value=(datetime.today(), datetime.today()),
+                            key="invoice_date_filter"
+                        )
+                    else:
+                        date_range = None
+
+                # Build the complete data table list from database objects
                 inv_table = []
-                # Keep track of structural database primary key IDs for deletion mapping
                 id_map = {} 
                 
                 for index, i in enumerate(invoices, start=1):
@@ -252,7 +295,6 @@ with tab2:
                     formatted_date = i.get("invoice_date") or "N/A"
                     display_label = f"S.No. {index} | {owner_name} ({i['vendor_name']}) - Bill: {i['invoice_number'] or 'N/A'}"
                     
-                    # Store the database ID mapped to this easy display row string
                     id_map[display_label] = i["id"]
                     
                     inv_table.append({
@@ -266,22 +308,46 @@ with tab2:
                         "Total Bill (Rs.)": float(i['total'])
                     })
                 
-                if inv_search:
-                    filtered_invs = [
-                        row for row in inv_table
-                        if inv_search in row["Assigned Client"].lower() or 
-                           inv_search in row["Vendor"].lower() or 
-                           inv_search in row["Bill Number"].lower()
-                    ]
-                    for idx, row in enumerate(filtered_invs, start=1):
-                        row["S.No."] = idx
-                else:
-                    filtered_invs = inv_table
+                # 2. RUN MULTI-LAYER FILTERING (Text Search + Date Window)
+                filtered_invs = []
+                for row in inv_table:
+                    # Check text matches
+                    text_match = True
+                    if inv_search:
+                        text_match = (
+                            inv_search in row["Assigned Client"].lower() or 
+                            inv_search in row["Vendor"].lower() or 
+                            inv_search in row["Bill Number"].lower()
+                        )
+                    
+                    # Check date range boundaries matches
+                    date_match = True
+                    if enable_date_filter and date_range and row["Invoice Date"] != "N/A":
+                        try:
+                            # Safely convert row date string back to date object for perfect boundary comparison
+                            row_date = datetime.strptime(row["Invoice Date"], "%Y-%m-%d").date()
+                            
+                            # Handle both cases: complete range selection or single date clicked
+                            if len(date_range) == 2:
+                                start_date, end_date = date_range
+                                date_match = (start_date <= row_date <= end_date)
+                            elif len(date_range) == 1:
+                                date_match = (row_date == date_range[0])
+                        except Exception:
+                            date_match = False
+                    
+                    # Row only passes if it matches BOTH text and date constraints
+                    if text_match and date_match:
+                        filtered_invs.append(row)
 
-                st.metric(label="Total Logged Vouchers", value=len(filtered_invs))
+                # Re-index the S.No. dynamically based on filtered subset list order
+                for idx, row in enumerate(filtered_invs, start=1):
+                    row["S.No."] = idx
+
+                st.metric(label="Total Filtered Vouchers", value=len(filtered_invs))
                 
                 if not filtered_invs:
-                    st.warning("No invoices found matching that specific search criteria.")
+                    st.warning("No invoices found matching that specific text search or date timeline criteria.")
                 else:
                     display_df = pd.DataFrame(filtered_invs)
                     
@@ -292,9 +358,8 @@ with tab2:
                     
                     st.dataframe(formatted_df, use_container_width=True, hide_index=True)
                     
-                    # Layout splitting actions for Export vs Delete
+                    # Action blocks for Export and Delete remain exactly the same below...
                     action_col1, action_col2 = st.columns(2)
-                    
                     with action_col1:
                         excel_buffer = io.BytesIO()
                         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
@@ -310,11 +375,8 @@ with tab2:
                             use_container_width=True
                         )
                     
-                    # FIX: Dedicated drop-down expander to handle records removal elegantly
-                    # Dedicated drop-down expander to handle records removal elegantly
                     with action_col2:
                         with st.expander("🗑️ Delete an Incorrect Record"):
-                            # Dropdown lets user select the invoice based on row labels
                             target_label = st.selectbox(
                                 "Select row to remove permanently:", 
                                 options=list(id_map.keys()),
@@ -323,8 +385,6 @@ with tab2:
                             )
                             
                             confirm_delete = st.button("Delete Permanently", type="primary", use_container_width=True)
-                            
-                        
                             delete_alert_placeholder = st.empty()
                             
                             if confirm_delete:
@@ -335,12 +395,10 @@ with tab2:
                                     if del_res is None:
                                         st.error("🔌 Could not connect to Backend. Is your FastAPI server running?")
                                     elif del_res.status_code == 200:
-                                        
-                                        delete_alert_placeholder.success("🗑️ Record Successfully Deleted from Database")
+                                        delete_alert_placeholder.success("🗑️ Record Successfully Deleted from Database!")
+                                        import time
                                         time.sleep(2.5)
                                         delete_alert_placeholder.empty()
-                                        
-                                        
                                         st.rerun()
                                     else:
                                         st.error(f"❌ Failed to delete. Backend returned status code: {del_res.status_code}")
