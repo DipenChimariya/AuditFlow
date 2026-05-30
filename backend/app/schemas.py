@@ -47,3 +47,27 @@ class InvoiceResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ==========================================
+# INVENTORY SCHEMAS
+# ==========================================
+
+class InventoryCreate(BaseModel):
+    client_id: int
+    product_name: str  # We will use this field to save the Period or Category name (e.g., "FY 2025/26")
+    opening_stock: float  
+    purchased: float    
+    sold: float
+
+class InventoryResponse(BaseModel):
+    id: int
+    client_id: int
+    product_name: str
+    opening_stock: int
+    purchased: int
+    sold: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True # Allows Pydantic to read SQLAlchemy lazy objects natively

@@ -73,7 +73,7 @@ def create_invoice(db: Session, invoice: schemas.InvoiceCreate):
                 detail=f"⚠️ Invoice/Bill number '{invoice.invoice_number}' has already been logged for this client."
             )
 
-    # 3. Safe Insertion
+    # Safe Insertion
     db_invoice = models.Invoice(**invoice.model_dump())
     try:
         db.add(db_invoice)
@@ -90,3 +90,40 @@ def create_invoice(db: Session, invoice: schemas.InvoiceCreate):
 def get_invoices(db: Session):
     """Fetches every logged voucher for the global ledger view."""
     return db.query(models.Invoice).all()
+
+# ➕ ADDED: Fetch invoices specifically matching a targeted client ID
+def get_invoices_by_client(db: Session, client_id: int):
+    """Retrieves all historical logged vouchers linked to an isolated client company."""
+    return db.query(models.Invoice).filter(models.Invoice.client_id == client_id).all()
+
+
+# ==========================================
+# ➕ ADDED: INVENTORY CRUD OPERATIONS
+# ==========================================
+
+def create_inventory_item(db: Session, item: schemas.InventoryCreate):
+    """Pins a verified product warehouse stock line into PostgreSQL."""
+    # Ensure client profile is valid before trying to assign inventory
+    client_exists = db.query(models.Client).filter(models.Client.id == item.client_id).first()
+    if not client_exists:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"❌ Cannot map inventory line. Client ID {item.client_id} does not exist."
+        )
+
+    db_item = models.Inventory(**item.model_dump())
+    try:
+        db.add(db_item)
+        db.commit()
+        db.refresh(db_item)
+        return db_item
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Database error occurred while adding warehouse stock row."
+        )
+
+def get_inventory_by_client(db: Session, client_id: int):
+    """Fetches complete stock sheets filtered by client ID."""
+    return db.query(models.Inventory).filter(models.Inventory.client_id == client_id).all()
