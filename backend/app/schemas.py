@@ -32,6 +32,7 @@ class InvoiceCreate(BaseModel):
     pan_number: Optional[str] = Field(None,pattern=r"^\d{9}$")
     category: Optional[str] = None
     invoice_date: Optional[date] = None
+    transaction_type: str
 
 class InvoiceResponse(BaseModel):
     id: int
@@ -44,6 +45,7 @@ class InvoiceResponse(BaseModel):
     pan_number: Optional[str] = Field(None,pattern=r"^\d{9}$")
     category: Optional[str] = None
     invoice_date: Optional[date] = None 
+    transaction_type: str
 
     class Config:
         from_attributes = True

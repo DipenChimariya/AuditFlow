@@ -9,7 +9,7 @@ if "client_success_msg" not in st.session_state:
     st.session_state.client_success_msg = None
 
 # ---- REGISTRATION FORM ----
-form_col, _ = st.columns([1, 1])  # Limits the input container so it doesn't look stretched
+form_col, _ = st.columns([1, 1])  
 with form_col:
     with st.container(border=True):
         st.markdown("### 🏢 Register New Client Firm")
@@ -49,7 +49,7 @@ with form_col:
                         except Exception:
                             st.error(f"❌ Backend Validation Mismatch (422): {response.text}")
                     elif response.status_code == 400:
-                        # 🚨 CATCHES DUPLICATES OR DATABASE CONSTRAINTS
+                        
                         try:
                             st.error(f"❌ Database Rejection (400 Bad Request): {response.json()['detail']}")
                         except Exception:

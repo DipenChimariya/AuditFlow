@@ -29,7 +29,7 @@ else:
 
     inv_col1, inv_col2 = st.columns([1, 2])
 
-    # 2. FINANCIAL ENTRY FORM
+    
     with inv_col1:
         with st.container(border=True):
             st.markdown(f"### 📊 Inventory Valuation Balances")
@@ -89,7 +89,7 @@ else:
                     else:
                         st.error("❌ Connection failure or database mapping rejection.")
 
-    # 3. DIRECTORY TABLE VIEW
+    
     with inv_col2:
         st.markdown(f"### 📋 Current Valuation Records: {selected_client_name}")
         records = fetch_inventory_by_client(target_client_id)

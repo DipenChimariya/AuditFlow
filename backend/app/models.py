@@ -9,11 +9,10 @@ class Client(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), index=True, nullable=False)
-    pan_number = Column(String(20), unique=True, index=True) # Unique PAN for each client firm
+    pan_number = Column(String(20), unique=True, index=True) 
 
     # ---- RECIPIOCAL RELATIONSHIP LINKS ----
     invoices = relationship("Invoice", back_populates="client", cascade="all, delete-orphan")
-    # FIX: Added this missing link so that Inventory can back-populate cleanly!
     inventory_items = relationship("Inventory", back_populates="client", cascade="all, delete-orphan")
 
 
@@ -28,21 +27,16 @@ class Invoice(Base):
     subtotal = Column(Numeric(precision=12, scale=2), default=0.00)
     vat = Column(Numeric(precision=12, scale=2), default=0.00)     
     total = Column(Numeric(precision=12, scale=2), default=0.00)
-    
-    # Categorization
+    # Categorization if needed
     category = Column(String(100))
-    
-    # Timeline
-    invoice_date = Column(Date)     
+    invoice_date = Column(Date)    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
     # Link back to Client
     client = relationship("Client", back_populates="invoices")
-
+    transaction_type = Column(String, nullable=False, default="Purchase")
 
 class Inventory(Base):
     __tablename__ = "inventory"
-
     id = Column(Integer, primary_key=True, index=True)
     client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
     product_name = Column(String(255), nullable=False)
@@ -51,5 +45,4 @@ class Inventory(Base):
     sold = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Link back to Client
     client = relationship("Client", back_populates="inventory_items")

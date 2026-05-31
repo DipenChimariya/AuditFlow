@@ -5,7 +5,6 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from utils.api import fetch_clients, fetch_invoices, add_new_invoice, delete_invoice
 
-# Initialize page configurations
 st.set_page_config(page_title="Invoice Ledger - AuditFlow", page_icon="📄", layout="wide")
 st.subheader("Invoice Records")
 
@@ -36,6 +35,13 @@ else:
             
             vendor_name = st.text_input("Vendor Name (Seller)", placeholder="e.g., Bhat-Bhateni Supermarket", key=f"p2_vendor_{st.session_state.form_generation}")
             
+            transaction_type = st.radio("Voucher Classification",
+                options=["Purchase (Stock In / Expense)", "Sale (Stock Out / Revenue)"],
+                horizontal=True, key=f"p2_type_radio_{st.session_state.form_generation}")
+            
+            
+            clean_type_string = "Purchase" if "Purchase" in transaction_type else "Sale"
+
             meta_col1, meta_col2 = st.columns(2)
             with meta_col1:
                 invoice_num = st.text_input("Invoice / Bill Number", placeholder="e.g., INV-2026-001", key=f"p2_inv_num_{st.session_state.form_generation}")
@@ -79,10 +85,8 @@ else:
             total_dec = subtotal_dec + vat_dec
             
             st.info(f"📊 **Voucher Summary:** Base: **Rs. {subtotal_dec:,.2f}** | VAT: **Rs. {vat_dec:,.2f}** | Total Bill: **Rs. {total_dec:,.2f}**")
-            
             st.markdown("---")
             
-            # ➕ TOP CONTAINER: Renders Creation success message cleanly above buttons
             if st.session_state.invoice_success_msg:
                 st.toast(st.session_state.invoice_success_msg, icon="📝")
                 st.success(st.session_state.invoice_success_msg)
@@ -95,20 +99,22 @@ else:
                 st.error("❌ Vendor Name is mandatory.")
             else:
                 with st.spinner("Linking to database..."):
+                    #Explicitly named keywords protect against positional index crashes
                     res = add_new_invoice(
-                        target_client_id, 
-                        vendor_name, 
-                        invoice_num, 
-                        float(subtotal_dec), 
-                        float(vat_dec), 
-                        invoice_date
+                        client_id=target_client_id, 
+                        vendor_name=vendor_name, 
+                        invoice_number=invoice_num, 
+                        subtotal=float(subtotal_dec), 
+                        vat=float(vat_dec),
+                        transaction_type=clean_type_string, 
+                        invoice_date=invoice_date
                     )
                     
                     if res is None:
                         st.error("🔌 Could not connect to Backend. Is your FastAPI server running?")
                     elif res.status_code in [200, 201]:
                         display_bill = invoice_num.strip() if invoice_num else "N/A"
-                        st.session_state.invoice_success_msg = f"SUCCESS: Invoice Record '{display_bill}' for {selected_client_name} has been successfully committed to the database ledger."
+                        st.session_state.invoice_success_msg = f"SUCCESS: Invoice Record '{display_bill}' ({clean_type_string}) for {selected_client_name} has been successfully committed to the database ledger."
                         st.session_state.form_generation += 1
                         st.rerun()
                     elif res.status_code == 422:
@@ -140,7 +146,7 @@ else:
             with filter_col1:
                 inv_search = st.text_input(
                     "🔍 Text Search", 
-                    placeholder="Type Vendor, Bill Number, Client Name...", 
+                    placeholder="Type Vendor, Bill, Type, Client Name...", 
                     key="invoice_search_input"
                 ).strip().lower()
             
@@ -157,7 +163,7 @@ else:
 
             inv_table = []
             
-            # Formulating the primary records list
+            
             for index, i in enumerate(invoices, start=1):
                 owner_name = next((c["name"] for c in clients_list if c["id"] == i["client_id"]), f"Client ID: {i['client_id']}")
                 formatted_date = i.get("invoice_date") or "N/A"
@@ -167,6 +173,7 @@ else:
                     "S.No.": index,
                     "Assigned Client": owner_name,
                     "Vendor": i["vendor_name"],
+                    "Type": i.get("transaction_type", "Purchase"),
                     "Bill Number": i["invoice_number"] or "N/A",
                     "Invoice Date": formatted_date,
                     "Subtotal (Rs.)": float(i['subtotal']),
@@ -181,6 +188,7 @@ else:
                     text_match = (
                         inv_search in row["Assigned Client"].lower() or 
                         inv_search in row["Vendor"].lower() or 
+                        inv_search in row["Type"].lower() or
                         inv_search in row["Bill Number"].lower()
                     )
                 
@@ -209,8 +217,6 @@ else:
                 st.warning("No invoices found matching that specific text search or date timeline criteria.")
             else:
                 display_df = pd.DataFrame(filtered_invs)
-                
-                # Drop DB primary keys before displaying the dataframe
                 render_df = display_df.drop(columns=["id"])
                 
                 formatted_df = render_df.copy()
@@ -238,42 +244,42 @@ else:
                 
                 with action_col2:
                     with st.expander("🗑️ Delete an Incorrect Record"):
-                        
-                        # ⚡ FIX: Build delete options map directly from the dynamic FILTERED records array
                         delete_options = {}
                         for r in filtered_invs:
                             bill_lbl = r['Bill Number'] if r['Bill Number'] else 'N/A'
-                            lbl = f"S.No. {r['S.No.']} | {r['Assigned Client']} -> {r['Vendor']} (Bill: {bill_lbl}, Total: Rs. {r['Total Bill (Rs.)']:,.2f})"
+                            lbl = f"S.No. {r['S.No.']} | {r['Assigned Client']} -> {r['Vendor']} ({r['Type']}) (Bill: {bill_lbl}, Total: Rs. {r['Total Bill (Rs.)']:,.2f})"
                             delete_options[lbl] = r["id"]
 
-                        selected_delete_lbl = st.selectbox(
-                            "Select row item to remove permanently:",
-                            options=list(delete_options.keys()),
-                            key="ledger_deletion_row_selector"
-                        )
-                        
-                        target_invoice_id = delete_options[selected_delete_lbl]
-                        
-                        try:
-                            extracted_bill_no = selected_delete_lbl.split("Bill: ")[1].split(",")[0]
-                        except Exception:
-                            extracted_bill_no = f"ID #{target_invoice_id}"
-
-                        # 🗑️ INSIDE CONTAINER: Render professional Deletion success confirmation message cleanly
-                        if st.session_state.delete_success_msg:
-                            st.toast(st.session_state.delete_success_msg, icon="✅") 
-                            st.success(st.session_state.delete_success_msg)
-                            st.session_state.delete_success_msg = None
+                        # OPTIMIZATION FIX: Handle empty search edge cases gracefully
+                        if delete_options:
+                            selected_delete_lbl = st.selectbox(
+                                "Select row item to remove permanently:",
+                                options=list(delete_options.keys()),
+                                key="ledger_deletion_row_selector"
+                            )
                             
-                        if st.button("Delete Permanently", type="primary", use_container_width=True):
-                            with st.spinner("Removing ledger entry..."):
-                                res = delete_invoice(target_invoice_id)
+                            target_invoice_id = delete_options[selected_delete_lbl]
+                            
+                            try:
+                                extracted_bill_no = selected_delete_lbl.split("Bill: ")[1].split(",")[0]
+                            except Exception:
+                                extracted_bill_no = f"ID #{target_invoice_id}"
 
-                                if res is None:
-                                    st.error("🔌 Backend server offline. Connection refused.")
-                                elif res.status_code in [200, 204]:
-                                    st.session_state.delete_success_msg = f"SUCCESS: Invoice Record '{extracted_bill_no}' has been permanently purged from the tracking system."
-                                    st.rerun()
-                                else:
-                                    st.error(f"❌ Failed to execute deletion. System returned status code: {res.status_code}")
-                                    
+                            if st.session_state.delete_success_msg:
+                                st.toast(st.session_state.delete_success_msg, icon="✅") 
+                                st.success(st.session_state.delete_success_msg)
+                                st.session_state.delete_success_msg = None
+                                
+                            if st.button("Delete Permanently", type="primary", use_container_width=True):
+                                with st.spinner("Removing ledger entry..."):
+                                    res = delete_invoice(target_invoice_id)
+
+                                    if res is None:
+                                        st.error("🔌 Backend server offline. Connection refused.")
+                                    elif res.status_code in [200, 204]:
+                                        st.session_state.delete_success_msg = f"SUCCESS: Invoice Record '{extracted_bill_no}' has been permanently purged from the tracking system."
+                                        st.rerun()
+                                    else:
+                                        st.error(f"❌ Failed to execute deletion. System returned status code: {res.status_code}")
+                        else:
+                            st.caption("No records available to delete.")
