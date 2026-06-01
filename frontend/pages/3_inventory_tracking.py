@@ -1,119 +1,114 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from utils.api import fetch_clients, fetch_inventory_by_client, add_inventory_item
+from utils.api import fetch_clients, fetch_invoices
 
-st.set_page_config(page_title="Inventory Valuation - AuditFlow", page_icon="📦", layout="wide")
-st.subheader("Inventory Financial Ledger")
+st.set_page_config(page_title="Inventory Tracker - AuditFlow", page_icon="📦", layout="wide")
 
-if "inventory_success_msg" not in st.session_state:
-    st.session_state.inventory_success_msg = None
-if "inv_form_gen" not in st.session_state:
-    st.session_state.inv_form_gen = 0
+st.title("📦 Client Inventory Tracker")
+st.caption("A simple prototype tracker showing how stock balances shift based on purchases and sales.")
+st.markdown("---")
 
 clients_list = fetch_clients() or []
+invoices_list = fetch_invoices() or []
 
 if not clients_list:
-    st.warning("⚠️ No registered client profiles found. Add clients in the Client Directory page first!")
+    st.warning("⚠️ Register a corporate client in the directory to initialize inventory auditing.")
 else:
-    # 1. CLIENT SELECTOR
-    client_options = {c["name"]: c["id"] for c in clients_list}
-    selected_client_name = st.selectbox(
-        "Select Client Firm to view Valuation Sheets:",
-        options=list(client_options.keys()),
-        key="inventory_global_client_selector"
-    )
-    target_client_id = client_options[selected_client_name]
+    # 1. Top Input Bar
+    col_config1, col_config2 = st.columns([2, 1])
+    
+    with col_config1:
+        client_options = {c["name"]: c["id"] for c in clients_list}
+        selected_client_name = st.selectbox(
+            "Select Client Profile", 
+            options=list(client_options.keys()),
+            key="auto_inventory_client_selector"
+        )
+        target_client_id = client_options[selected_client_name]
+        
+    with col_config2:
+        opening_stock = st.number_input(
+            "Starting Stock Value (Rs.)", 
+            min_value=0.0, 
+            value=0.0, 
+            step=10000.0,
+            format="%.2f",
+            help="Enter the value of stock the business started with this year."
+        )
+
     st.markdown("---")
 
-    inv_col1, inv_col2 = st.columns([1, 2])
-
+    # 2. Simple Math Calculations
+    client_invoices = [inv for inv in invoices_list if inv["client_id"] == target_client_id]
     
-    with inv_col1:
-        with st.container(border=True):
-            st.markdown(f"### 📊 Inventory Valuation Balances")
-            st.caption(f"Record monetary inventory balances for {selected_client_name}")
-            st.markdown("---")
-            
-            period_lbl = st.text_input(
-                "Audit Period / Inventory Category", 
-                placeholder="e.g., FY 2025/26 Summary, Raw Materials, etc.",
-                key=f"inv_prd_{st.session_state.inv_form_gen}"
-            )
-            
-            # Currency Value Inputs using text fields for precision mapping
-            op_raw = st.text_input("Opening Inventory Value (Rs.)", value="0.00", key=f"inv_op_{st.session_state.inv_form_gen}").strip()
-            pur_raw = st.text_input("Total Purchases Value (Rs.)", value="0.00", key=f"inv_pur_{st.session_state.inv_form_gen}").strip()
-            sold_raw = st.text_input("Cost of Goods Sold (COGS) (Rs.)", value="0.00", key=f"inv_sld_{st.session_state.inv_form_gen}").strip()
-            
-            try:
-                op_val = Decimal(op_raw) if op_raw else Decimal("0.00")
-                pur_val = Decimal(pur_raw) if pur_raw else Decimal("0.00")
-                sold_val = Decimal(sold_raw) if sold_raw else Decimal("0.00")
-            except InvalidOperation:
-                st.error("⚠️ Value input contains invalid formatting. Use numbers only.")
-                op_val, pur_val, sold_val = Decimal("0.00"), Decimal("0.00"), Decimal("0.00")
-                
-            # Audit Math Formula calculation
-            closing_val = op_val + pur_val - sold_val
-            
-            st.info(f"📋 **Calculated Closing Stock Value:** Rs. {closing_val:,.2f}")
-            st.markdown("---")
-            
-            if st.session_state.inventory_success_msg:
-                st.toast(st.session_state.inventory_success_msg, icon="📦")
-                st.success(st.session_state.inventory_success_msg)
-                st.session_state.inventory_success_msg = None
-
-            submit_val = st.button("Commit Balances to Database", type="primary", use_container_width=True)
-            
-        if submit_val:
-            if not period_lbl:
-                st.error("❌ Specifying the Audit Period or Category label is mandatory.")
-            elif closing_val < 0:
-                st.error("❌ Arithmetic Warning: Closing inventory calculation resulted in a negative asset value.")
-            else:
-                with st.spinner("Writing ledger values..."):
-                    res = add_inventory_item(
-                        target_client_id,
-                        period_lbl.strip(),
-                        float(op_val),
-                        float(pur_val),
-                        float(sold_val)
-                    )
-                    if res and res.status_code in [200, 201]:
-                        st.session_state.inventory_success_msg = f"SUCCESS: Valuation records for '{period_lbl}' committed for {selected_client_name}."
-                        st.session_state.inv_form_gen += 1
-                        st.rerun()
-                    else:
-                        st.error("❌ Connection failure or database mapping rejection.")
-
+    total_purchases = sum(float(inv.get("subtotal", 0.0)) for inv in client_invoices if inv.get("transaction_type") == "Purchase")
+    total_sales = sum(float(inv.get("subtotal", 0.0)) for inv in client_invoices if inv.get("transaction_type") == "Sale")
     
-    with inv_col2:
-        st.markdown(f"### 📋 Current Valuation Records: {selected_client_name}")
-        records = fetch_inventory_by_client(target_client_id)
+    # Simple prototype equation
+    final_stock_balance = (opening_stock + total_purchases) - total_sales
+
+    # 3. Clean, Easy-to-Read Visual Cards
+    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+    
+    with m_col1:
+        st.markdown(f"""
+        <div style="background-color:#1e293b; padding:15px; border-radius:8px; border-left: 5px solid #3b82f6;">
+            <p style="margin:0; font-size:14px; color:#94a3b8;">1. Starting Stock</p>
+            <h3 style="margin:5px 0 0 0; font-size:20px; color:white;">Rs. {opening_stock:,.2f}</h3>
+        </div>
+        """, unsafe_allow_html=True)
         
-        if records is None:
-            st.error("🔌 Backend API server unreachable.")
-        elif not records:
-            st.info("No monetary inventory lines recorded for this client firm yet.")
-        else:
-            table_rows = []
-            for idx, r in enumerate(records, start=1):
-                op = float(r.get("opening_stock", 0))
-                pur = float(r.get("purchased", 0))
-                sld = float(r.get("sold", 0))
-                closing = op + pur - sld
-                
-                table_rows.append({
-                    "S.No.": idx,
-                    "Audit Period / Category": r.get("product_name", "N/A"),
-                    "Opening Asset Value": f"Rs. {op:,.2f}",
-                    "Total Purchases": f"Rs. {pur:,.2f}",
-                    "Cost of Goods Sold (COGS)": f"Rs. {sld:,.2f}",
-                    "Closing Asset Valuation": f"Rs. {closing:,.2f}"
-                })
-                
-            df = pd.DataFrame(table_rows)
-            st.dataframe(df, use_container_width=True, hide_index=True)
+    with m_col2:
+        num_purchases = len([i for i in client_invoices if i.get('transaction_type') == 'Purchase'])
+        st.markdown(f"""
+        <div style="background-color:#1e293b; padding:15px; border-radius:8px; border-left: 5px solid #10b981;">
+            <p style="margin:0; font-size:14px; color:#94a3b8;">2. Stock Added (+)</p>
+            <h3 style="margin:5px 0 0 0; font-size:20px; color:white;">Rs. {total_purchases:,.2f}</h3>
+            <span style="font-size:12px; color:#10b981;">From {num_purchases} purchase bills</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with m_col3:
+        num_sales = len([i for i in client_invoices if i.get('transaction_type') == 'Sale'])
+        st.markdown(f"""
+        <div style="background-color:#1e293b; padding:15px; border-radius:8px; border-left: 5px solid #f59e0b;">
+            <p style="margin:0; font-size:14px; color:#94a3b8;">3. Stock Removed (-)</p>
+            <h3 style="margin:5px 0 0 0; font-size:20px; color:white;">Rs. {total_sales:,.2f}</h3>
+            <span style="font-size:12px; color:#f59e0b;">From {num_sales} sales invoices</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with m_col4:
+        status_color = "#10b981" if final_stock_balance >= 0 else "#ef4444"
+        st.markdown(f"""
+        <div style="background-color:#1e293b; padding:15px; border-radius:8px; border-left: 5px solid {status_color};">
+            <p style="margin:0; font-size:14px; color:#94a3b8;">4. Available Stock</p>
+            <h3 style="margin:5px 0 0 0; font-size:20px; color:white;">Rs. {final_stock_balance:,.2f}</h3>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.write("") 
+    st.markdown("---")
+    
+    # 4. Simple Audit Trail Table
+    st.markdown(f"### 📑 Stock Activity History: {selected_client_name}")
+    
+    if not client_invoices:
+        st.info("No invoices found for this client.")
+    else:
+        audit_trail = []
+        for idx, inv in enumerate(client_invoices, start=1):
+            inv_type = inv.get("transaction_type", "Purchase")
+            subtotal = float(inv.get("subtotal", 0.0))
+            
+            audit_trail.append({
+                "S.No.": idx,
+                "Date": inv.get("invoice_date") or "N/A",
+                "Invoice Number": inv.get("invoice_number") or "N/A",
+                "Description / Company Name": inv.get("vendor_name"),
+                "Action": "Stock In" if inv_type == "Purchase" else "Stock Out",
+                "Value": f"Rs. {subtotal:,.2f}"
+            })
+            
+        df_trail = pd.DataFrame(audit_trail)
+        st.dataframe(df_trail, use_container_width=True, hide_index=True)
