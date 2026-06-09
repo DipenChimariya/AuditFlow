@@ -99,7 +99,7 @@ else:
                 st.error("❌ Vendor Name is mandatory.")
             else:
                 with st.spinner("Linking to database..."):
-                    #Explicitly named keywords protect against positional index crashes
+                    
                     res = add_new_invoice(
                         client_id=target_client_id, 
                         vendor_name=vendor_name, 

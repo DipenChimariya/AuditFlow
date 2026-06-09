@@ -1,5 +1,5 @@
 import streamlit as st
-import pandas as pd
+import pandas as pd  
 import plotly.express as px  
 from utils.api import fetch_clients, fetch_invoices
 
@@ -90,7 +90,7 @@ else:
         # Create a copy for pretty UI presentation formatting
         df_render = df_compliance.copy()
         
-        # FIXED: Simple and reliable currency string mapping
+        # Simple and reliable currency string mapping
         df_render["Total Purchases (Rs.)"] = df_render["Total Purchases (Rs.)"].apply(lambda x: f"Rs. {x:,.2f}")
         df_render["Total Sales (Rs.)"] = df_render["Total Sales (Rs.)"].apply(lambda x: f"Rs. {x:,.2f}")
         df_render["Input VAT Credit (13%)"] = df_render["Input VAT Credit (13%)"].apply(lambda x: f"Rs. {x:,.2f}")
@@ -103,9 +103,13 @@ else:
         st.markdown("### 📈 Corporate Financial Volume Breakdown")
         
         if tot_vouchers > 0:
+            # FIXED: Using proper native pandas .sum() method instead of native Python sum()
+            total_purchases_calc = float(df_compliance["Total Purchases (Rs.)"].sum())
+            total_sales_calc = float(df_compliance["Total Sales (Rs.)"].sum())
+
             chart_df = pd.DataFrame([
-                {"Voucher Flow Category": "Purchases / Inbound Expenses", "Total Value Amount (Rs.)": sum(df_compliance["Total Purchases (Rs.)"])},
-                {"Voucher Flow Category": "Sales / Outbound Revenue", "Total Value Amount (Rs.)": sum(df_compliance["Total Sales (Rs.)"])}
+                {"Voucher Flow Category": "Purchases / Inbound Expenses", "Total Value Amount (Rs.)": total_purchases_calc},
+                {"Voucher Flow Category": "Sales / Outbound Revenue", "Total Value Amount (Rs.)": total_sales_calc}
             ])
             
             fig = px.bar(
