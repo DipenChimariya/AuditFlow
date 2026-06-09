@@ -5,6 +5,59 @@ from utils.api import fetch_clients, fetch_invoices
 
 st.set_page_config(page_title="Dashboard - AuditFlow", page_icon="📊", layout="wide")
 
+# --- AUTHENTICATION LAYER ---
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+if "forgot_password" not in st.session_state:
+    st.session_state["forgot_password"] = False
+
+def login():
+    st.title("🔒 AuditFlow Secure Gateway")
+    st.caption("Please authenticate to access client compliance matrices.")
+    
+    # If forgot password flag is active, show password recovery message
+    if st.session_state["forgot_password"]:
+        st.info("🔑 **Password Recovery Protocol**")
+        st.markdown("""
+        For data security and NFRS compliance, automated email recovery is disabled for this node.
+        
+        Please contact your System Administrator to verify your identity and reset your access keys:
+        * 📧 **IT Support:** chimariyadipen@gmail.com""")
+        if st.button("⬅️ Back to Login"):
+            st.session_state["forgot_password"] = False
+            st.rerun()
+        return
+
+    #Login Form Layout
+    with st.form("Login Form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submit_button = st.form_submit_button("Log In")
+        
+        if submit_button:
+            if username == "admin" and password == "auditflow2026":
+                st.session_state["authenticated"] = True
+                st.success("Authentication successful!")
+                st.rerun()
+            else:
+                st.error("Invalid username or password. Please try again.")
+
+    # Forgot Password link placement right below the form container
+    if st.button("❓ Forgot Password?", help="Click here to see recovery options"):
+        st.session_state["forgot_password"] = True
+        st.rerun()
+
+if not st.session_state["authenticated"]:
+    login()
+    st.stop()
+
+# --- MAIN DASHBOARD (Only shows if authenticated) ---
+
+# Add a logout button in the sidebar for clean UX
+if st.sidebar.button("🚪 Log Out"):
+    st.session_state["authenticated"] = False
+    st.rerun()
+
 st.title("📊 AuditFlow Analytics Engine")
 st.caption("Real-time compliance monitoring, VAT tracking, and client ledger synthesis.")
 st.markdown("---")
@@ -20,14 +73,21 @@ else:
     tot_clients = len(clients)
     tot_vouchers = len(invoices)
     
+    grand_total = 0.0
+    for inv in invoices:
+        raw_total = inv.get("total")
+        if raw_total and str(raw_total).strip():
+            try:
+                grand_total += float(raw_total)
+            except ValueError:
+                pass  
+
     m_col1, m_col2, m_col3 = st.columns(3)
     with m_col1:
         st.metric(label="Registered Client Portfolios", value=tot_clients)
     with m_col2:
         st.metric(label="Central Ledger Voucher Count", value=tot_vouchers)
     with m_col3:
-        # Calculate total monetary ledger movement
-        grand_total = sum(float(inv.get("total", 0.0)) for inv in invoices)
         st.metric(label="Aggregated Financial Volume", value=f"Rs. {grand_total:,.2f}")
         
     st.markdown("### 🏢 Client Compliance & VAT Position Matrix")
@@ -40,7 +100,6 @@ else:
         c_name = client["name"]
         c_pan = client.get("pan_number") or "N/A"
         
-        # Filter all system invoices tied to this specific client
         client_invoices = [inv for inv in invoices if inv["client_id"] == c_id]
         
         purchases_sum = 0.0
@@ -50,8 +109,16 @@ else:
         
         for inv in client_invoices:
             inv_type = inv.get("transaction_type", "Purchase")
-            subtotal = float(inv.get("subtotal", 0.0))
-            vat = float(inv.get("vat", 0.0))
+            
+            try:
+                subtotal = float(inv.get("subtotal", 0.0))
+            except (ValueError, TypeError):
+                subtotal = 0.0
+                
+            try:
+                vat = float(inv.get("vat", 0.0))
+            except (ValueError, TypeError):
+                vat = 0.0
             
             if inv_type == "Purchase":
                 purchases_sum += subtotal
@@ -60,7 +127,6 @@ else:
                 sales_sum += subtotal
                 output_vat += vat
                 
-        # Nepal Tax Rule: Net VAT Status = Output VAT (Sales) - Input VAT (Purchases)
         net_vat_position = output_vat - input_vat
         
         if net_vat_position > 0:
@@ -86,11 +152,8 @@ else:
     else:
         # 4. Generate clean structured compliance sheet
         df_compliance = pd.DataFrame(compliance_data)
-        
-        # Create a copy for pretty UI presentation formatting
         df_render = df_compliance.copy()
         
-        # Simple and reliable currency string mapping
         df_render["Total Purchases (Rs.)"] = df_render["Total Purchases (Rs.)"].apply(lambda x: f"Rs. {x:,.2f}")
         df_render["Total Sales (Rs.)"] = df_render["Total Sales (Rs.)"].apply(lambda x: f"Rs. {x:,.2f}")
         df_render["Input VAT Credit (13%)"] = df_render["Input VAT Credit (13%)"].apply(lambda x: f"Rs. {x:,.2f}")
@@ -103,7 +166,6 @@ else:
         st.markdown("### 📈 Corporate Financial Volume Breakdown")
         
         if tot_vouchers > 0:
-            # FIXED: Using proper native pandas .sum() method instead of native Python sum()
             total_purchases_calc = float(df_compliance["Total Purchases (Rs.)"].sum())
             total_sales_calc = float(df_compliance["Total Sales (Rs.)"].sum())
 
